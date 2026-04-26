@@ -1,6 +1,6 @@
 {
   "name": "kkameokji",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "description": "까먹지 말자 — 할일 & 알림 앱",
   "main": "main.js",
   "scripts": {

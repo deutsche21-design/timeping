@@ -260,16 +260,20 @@ async function importFromGcal() {
 
 function scheduleSnooze(task, minutes) {
   if (isAlarmPaused()) return;
-  const snoozeTime = new Date(Date.now() + minutes * 60 * 1000);
-  const h = String(snoozeTime.getHours()).padStart(2, '0');
-  const m = String(snoozeTime.getMinutes()).padStart(2, '0');
-  const snoozeTask = {
-    ...task,
-    alertTime: `${h}:${m}`,
-    repeat: 'ONCE',
-    targetDate: snoozeTime.toISOString().split('T')[0]
-  };
-  setTimeout(() => handleAlert(snoozeTask), minutes * 60 * 1000);
+  const fireAt = Date.now() + minutes * 60 * 1000;
+
+  // Persist snoozeUntil on the actual task so:
+  //  - The UI can show a snooze badge with the upcoming fire time
+  //  - The scheduler re-arms the snooze across app restarts
+  const tasks = loadTasks();
+  const idx = tasks.findIndex(t => t.id === task.id);
+  if (idx === -1) return;
+  tasks[idx].snoozeUntil = fireAt;
+  saveTasks(tasks);
+  refreshScheduler(tasks, handleAlert);
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('tasks-updated', tasks);
+  }
 }
 
 // ── Incoming-message handler: show overlay + notify renderer ──────────────

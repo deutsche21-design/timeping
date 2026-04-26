@@ -64,6 +64,17 @@ function todayStr() {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
 
+// Snooze badge HTML — '' if not snoozed
+function formatSnoozeBadge(task) {
+  if (!task.snoozeUntil) return '';
+  const ms = Number(task.snoozeUntil) - Date.now();
+  if (ms <= 0) return '';
+  const d = new Date(Number(task.snoozeUntil));
+  const h = String(d.getHours()).padStart(2,'0');
+  const m = String(d.getMinutes()).padStart(2,'0');
+  return `<span class="task-snooze-badge">💤 ${h}:${m} 재알림</span>`;
+}
+
 function tomorrowStr() {
   const d = new Date();
   d.setDate(d.getDate() + 1);
@@ -182,7 +193,19 @@ function updateClock() {
   const now = new Date();
   const h = String(now.getHours()).padStart(2,'0');
   const m = String(now.getMinutes()).padStart(2,'0');
-  el.textContent = `${h}:${m}`;
+  const s = String(now.getSeconds()).padStart(2,'0');
+  const dow = ['일','월','화','수','목','금','토'][now.getDay()];
+  const dateStr = `${now.getMonth()+1}/${now.getDate()} (${dow})`;
+  el.innerHTML = `<span class="clock-time">${h}:${m}:${s}</span><span class="clock-date">${dateStr}</span>`;
+}
+
+// Show app version in header (set once on init)
+async function updateVersionLabel() {
+  try {
+    const v = await window.timeping.getAppVersion();
+    const el = document.getElementById('app-version');
+    if (el) el.textContent = `v${v}`;
+  } catch {}
 }
 
 // ─── Sound ────────────────────────────────────────────────────────────────────
@@ -337,7 +360,7 @@ function render() {
       <div class="app-header">
         <div class="app-title-wrap">
           <span class="app-title">까먹지 말자</span>
-          <span class="app-for">for e.j</span>
+          <span class="app-for" id="app-version">v—</span>
         </div>
         <span class="clock" id="clock"></span>
       </div>
@@ -911,7 +934,10 @@ function renderTaskListView() {
               : `<div class="timeline-check${t.isCompleted ? ' checked' : ''}" data-complete="${t.id}">${t.isCompleted ? '✓' : ''}</div>`
             }
             <div class="timeline-time">${t.alertTime || '–'}</div>
-            <div class="timeline-title"${state.selectMode ? ` data-select="${t.id}"` : ` data-expand="${t.id}"`}>${esc(t.title)}</div>
+            <div class="timeline-title"${state.selectMode ? ` data-select="${t.id}"` : ` data-expand="${t.id}"`}>
+              ${esc(t.title)}
+              ${formatSnoozeBadge(t)}
+            </div>
             <div class="task-hover-actions">
               ${t.isCompleted ? `<button class="task-action-btn" data-restore="${t.id}" title="완료 취소">↩</button>` : ''}
               <button class="task-action-btn" data-expand="${t.id}" title="편집">✏️</button>
@@ -947,16 +973,20 @@ function renderTaskCard(task) {
   const draft   = getDraft(task);
   const hasAlert = !!task.alertTime;
 
+  // Snooze badge (visible whenever snoozeUntil is in the future)
+  const snoozeBadge = formatSnoozeBadge(task);
+
   // Meta row (only if has alert)
   let metaHtml = '';
-  if (hasAlert) {
+  if (hasAlert || snoozeBadge) {
     const chIcons = (task.alertChannels || []).map(c => `<span class="task-meta-ch">${CHANNEL_ICONS[c]||''}</span>`).join('');
     const repLabel = task.repeat && task.repeat !== 'ONCE' ? `<span class="task-meta-repeat">${REPEAT_LABELS[task.repeat]}</span>` : '';
     metaHtml = `
       <div class="task-meta">
-        <span class="task-meta-time">⏰ ${task.alertTime}</span>
+        ${hasAlert ? `<span class="task-meta-time">⏰ ${task.alertTime}</span>` : ''}
         ${repLabel}
-        <span class="task-meta-channels">${chIcons}</span>
+        ${snoozeBadge}
+        ${hasAlert ? `<span class="task-meta-channels">${chIcons}</span>` : ''}
       </div>`;
   }
 
@@ -2178,6 +2208,7 @@ async function init() {
   // Initial render (skeleton)
   fullRender();
   startClock();
+  updateVersionLabel();
 
   // Load data
   try {
@@ -2240,9 +2271,11 @@ function mountV2Overlay() {
   const style = document.createElement('style');
   style.textContent = `
     .v2-toolbar {
-      position: fixed; top: 8px; right: 12px; z-index: 500;
+      position: fixed; top: 7px; right: 12px; z-index: 500;
       display: flex; gap: 6px; align-items: center;
       -webkit-app-region: no-drag;
+      background: var(--surface);
+      padding: 0;
     }
     .v2-btn-wrap { position: relative; display: inline-flex; }
     .v2-btn {
@@ -2407,10 +2440,7 @@ function mountV2Overlay() {
   toolbar.innerHTML = `
     <button class="v2-btn" id="v2-aot-btn" title="항상 맨 위">📌</button>
     <button class="v2-btn" id="v2-pause-btn" title="알림 일시중지">🔔</button>
-    <span class="v2-btn-wrap">
-      <button class="v2-btn" id="v2-inbox-btn" title="쪽지함">📨</button>
-      <span class="v2-badge" id="v2-inbox-badge"></span>
-    </span>
+    <button class="v2-btn" id="v2-inbox-btn" title="쪽지함">📨</button>
     <button class="v2-btn" id="v2-send-btn" title="쪽지/찌르기 보내기">✏️</button>
     <button class="v2-btn" id="v2-update-btn" title="업데이트 확인">⬇️</button>
   `;
@@ -2529,9 +2559,9 @@ function mountV2Overlay() {
 
   // ── Inbox modal ────────────────────────────────────────────────
   function renderBadge() {
-    const badge = document.getElementById('v2-inbox-badge');
-    const unread = state2.inbox.filter(m => m.status === 'unread').length;
-    badge.textContent = unread > 0 ? String(unread) : '';
+    // Badge intentionally removed per user request — unread count visible
+    // inside the inbox modal instead. Function kept as a safe no-op so other
+    // call sites don't need conditional checks.
   }
 
   function openInbox() {

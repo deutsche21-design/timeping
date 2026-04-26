@@ -99,23 +99,28 @@
   .btn-complete:active { transform: translateY(0); box-shadow: none; }
 
   .snooze-menu {
-    position: absolute; bottom: calc(100% + 6px); left: 0;
-    background: rgba(30,30,42,0.98);
-    border: 1px solid rgba(255,255,255,0.1);
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
     border-radius: 10px;
-    padding: 4px;
-    box-shadow: 0 8px 24px rgba(0,0,0,0.5);
-    display: flex; flex-direction: column; gap: 1px;
-    min-width: 140px; z-index: 5;
+    padding: 6px;
+    display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px;
+    -webkit-app-region: no-drag;
   }
   .snooze-menu.hidden { display: none; }
   .snooze-menu-item {
-    padding: 7px 12px; font-size: 12px; font-weight: 600;
-    color: rgba(255,255,255,0.8); cursor: pointer;
-    border-radius: 6px; user-select: none;
-    -webkit-app-region: no-drag;
+    padding: 8px 4px; font-size: 11px; font-weight: 700;
+    color: rgba(255,255,255,0.85); cursor: pointer;
+    border-radius: 7px; user-select: none;
+    text-align: center;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.07);
+    transition: all .12s;
   }
-  .snooze-menu-item:hover { background: rgba(255,255,255,0.1); }
+  .snooze-menu-item:hover {
+    background: rgba(99,102,241,0.25);
+    border-color: rgba(99,102,241,0.5);
+    color: #fff;
+  }
 </style>
 </head>
 <body>
@@ -135,13 +140,13 @@
     <div class="btn-row">
       <button class="btn btn-ghost" id="snooze-btn">⏰ 스누즈</button>
       <button class="btn btn-complete" id="complete-btn">✓ 완료 처리</button>
-      <div class="snooze-menu hidden" id="snooze-menu">
-        <div class="snooze-menu-item" data-min="1">1분 후</div>
-        <div class="snooze-menu-item" data-min="5">5분 후</div>
-        <div class="snooze-menu-item" data-min="10">10분 후</div>
-        <div class="snooze-menu-item" data-min="30">30분 후</div>
-        <div class="snooze-menu-item" data-min="60">1시간 후</div>
-      </div>
+    </div>
+    <div class="snooze-menu hidden" id="snooze-menu">
+      <div class="snooze-menu-item" data-min="1">1분</div>
+      <div class="snooze-menu-item" data-min="5">5분</div>
+      <div class="snooze-menu-item" data-min="10">10분</div>
+      <div class="snooze-menu-item" data-min="30">30분</div>
+      <div class="snooze-menu-item" data-min="60">1시간</div>
     </div>
   </div>
 </div>

@@ -45,6 +45,27 @@ function refreshScheduler(tasks, onAlert) {
 
   tasks.forEach(task => {
     if (task.isCompleted) return;
+
+    // Pending snooze: independent timer that fires at task.snoozeUntil and
+    // clears the flag once fired. Survives app restart.
+    if (task.snoozeUntil && task.snoozeUntil > Date.now()) {
+      const delta = task.snoozeUntil - Date.now();
+      if (delta <= 2147483000) {
+        const tid = setTimeout(() => {
+          const { loadTasks, saveTasks } = require('./store');
+          const ts = loadTasks();
+          const i = ts.findIndex(x => x.id === task.id);
+          if (i !== -1) {
+            delete ts[i].snoozeUntil;
+            saveTasks(ts);
+          }
+          if (isAlarmPaused()) return;
+          onAlert(ts[i] || task);
+        }, delta);
+        onceTimers.push(tid);
+      }
+    }
+
     if (!task.alertTime) return;
 
     const parts = task.alertTime.split(':');
