@@ -47,6 +47,10 @@ contextBridge.exposeInMainWorld('timeping', {
   remoteReply: (originalMsgId, text) => ipcRenderer.invoke('remote-reply', originalMsgId, text),
   checkForUpdate: () => ipcRenderer.invoke('check-for-update'),
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),
+  installUpdate: (downloadUrl, version) => ipcRenderer.invoke('install-update', downloadUrl, version),
+  onUpdateProgress: (cb) => {
+    ipcRenderer.on('update-progress', (_, p) => cb(p));
+  },
   onRemoteInbox: (cb) => {
     ipcRenderer.on('remote-inbox-updated', (_, items) => cb(items));
   },

@@ -643,6 +643,25 @@
       letter-spacing: 0.2px;
     }
 
+    .task-meta-date {
+      font-size: 10px; font-weight: 700;
+      color: var(--text-muted);
+      background: var(--surface2);
+      padding: 1px 6px; border-radius: 3px;
+      letter-spacing: 0.2px;
+      border: 1px solid var(--border);
+    }
+    .task-meta-date.today {
+      color: var(--primary);
+      background: var(--primary-light);
+      border-color: var(--primary);
+    }
+    .task-meta-date.past {
+      color: var(--danger);
+      background: var(--danger-light);
+      border-color: var(--danger);
+    }
+
     .task-meta-ch {
       font-size: 11px;
     }

@@ -18,6 +18,7 @@ const { sendEmailAlert, testSmtp } = require('./src/emailer');
 const gcal = require('./src/gcal');
 const messaging = require('./src/messaging');
 const memoWindow = require('./src/memoWindow');
+const updater = require('./src/updater');
 
 let mainWindow;
 let trayRef;
@@ -717,6 +718,20 @@ function setupIPC() {
   });
 
   ipcMain.handle('get-app-version', () => app.getVersion());
+
+  ipcMain.handle('install-update', async (_, downloadUrl, version) => {
+    try {
+      await updater.downloadAndInstall(downloadUrl, version, (downloaded, total) => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('update-progress', { downloaded, total });
+        }
+      });
+      return { ok: true };
+    } catch (e) {
+      console.error('install-update error:', e);
+      return { ok: false, error: e.message };
+    }
+  });
 
   ipcMain.handle('check-for-update', async () => {
     try {

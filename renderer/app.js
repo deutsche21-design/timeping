@@ -13,6 +13,7 @@ const SMTP_PRESETS   = {
 
 // ─── State ────────────────────────────────────────────────────────────────────
 let state = {
+  appVersion:     '',
   tasks:          [],
   settings:       {},
   tab:            'tasks',       // 'tasks' | 'schedule' | 'history' | 'settings'
@@ -62,6 +63,26 @@ let state = {
 function todayStr() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
+// Friendly date label for a task's targetDate
+//   today  → "오늘"
+//   tmrw   → "내일"
+//   future → "M월 D일 (요일)"
+//   past   → "지남" (this list shouldn't have these but defensive)
+function formatTaskDateLabel(dateStr) {
+  if (!dateStr) return '';
+  const today = todayStr();
+  if (dateStr === today) return '오늘';
+  if (dateStr === tomorrowStr()) return '내일';
+  const [y, m, d] = dateStr.split('-').map(Number);
+  if (!y || !m || !d) return '';
+  const date = new Date(y, m - 1, d);
+  const todayDate = new Date();
+  todayDate.setHours(0, 0, 0, 0);
+  const dow = ['일','월','화','수','목','금','토'][date.getDay()];
+  if (date < todayDate) return '지남';
+  return `${m}/${d} (${dow})`;
 }
 
 // Snooze badge HTML — '' if not snoozed
@@ -199,12 +220,13 @@ function updateClock() {
   el.innerHTML = `<span class="clock-time">${h}:${m}:${s}</span><span class="clock-date">${dateStr}</span>`;
 }
 
-// Show app version in header (set once on init)
-async function updateVersionLabel() {
+// Cache app version in state once on startup; renders pick it up via the
+// template above. Also update DOM directly if the header is already mounted.
+async function loadAppVersion() {
   try {
-    const v = await window.timeping.getAppVersion();
+    state.appVersion = await window.timeping.getAppVersion();
     const el = document.getElementById('app-version');
-    if (el) el.textContent = `v${v}`;
+    if (el) el.textContent = `v${state.appVersion}`;
   } catch {}
 }
 
@@ -309,6 +331,8 @@ function getFilteredTasks() {
     tasks = tasks.filter(taskIsToday);
   } else if (state.filter === 'alert') {
     tasks = tasks.filter(t => !!t.alertTime);
+  } else if (state.filter === 'todo') {
+    tasks = tasks.filter(t => !t.alertTime);
   }
 
   if (state.search) {
@@ -360,7 +384,7 @@ function render() {
       <div class="app-header">
         <div class="app-title-wrap">
           <span class="app-title">까먹지 말자</span>
-          <span class="app-for" id="app-version">v—</span>
+          <span class="app-for" id="app-version">${state.appVersion ? 'v' + state.appVersion : ''}</span>
         </div>
         <span class="clock" id="clock"></span>
       </div>
@@ -768,7 +792,8 @@ function updateFilterSection() {
   const FILTERS = [
     { key: 'today', label: '오늘' },
     { key: 'all',   label: '전체' },
-    { key: 'alert', label: '알림' },
+    { key: 'alert', label: '🔔 알림있음' },
+    { key: 'todo',  label: '📋 알림없음' },
   ];
   const chipsHtml = FILTERS.map(f =>
     `<button class="filter-chip${state.filter===f.key?' active':''}" data-filter="${f.key}">${f.label}</button>`
@@ -878,6 +903,8 @@ function renderTaskListView() {
     todoTasks = todoTasks.filter(taskIsToday);
   } else if (state.filter === 'alert') {
     todoTasks = todoTasks.filter(t => !!t.alertTime);
+  } else if (state.filter === 'todo') {
+    todoTasks = todoTasks.filter(t => !t.alertTime);
   }
   if (state.search) {
     const q = state.search.toLowerCase();
@@ -891,6 +918,8 @@ function renderTaskListView() {
   let filteredTimeline = timelineItems;
   if (state.filter === 'alert') {
     filteredTimeline = timelineItems.filter(t => !!t.alertTime);
+  } else if (state.filter === 'todo') {
+    filteredTimeline = timelineItems.filter(t => !t.alertTime);
   }
   if (state.search) {
     const q = state.search.toLowerCase();
@@ -907,6 +936,7 @@ function renderTaskListView() {
     let msg = '할일이 없습니다';
     if (state.filter === 'today')  msg = '오늘 할일이 없습니다';
     if (state.filter === 'alert')  msg = '알림이 설정된 할일이 없습니다';
+    if (state.filter === 'todo')   msg = '알림 없는 할일이 없습니다';
     if (state.search)              msg = '검색 결과가 없습니다';
     return `
       <div class="task-list-view">
@@ -975,14 +1005,18 @@ function renderTaskCard(task) {
 
   // Snooze badge (visible whenever snoozeUntil is in the future)
   const snoozeBadge = formatSnoozeBadge(task);
+  const isOnceTask = !task.repeat || task.repeat === 'ONCE';
+  const dateLabel = isOnceTask ? formatTaskDateLabel(task.targetDate) : '';
+  const dateBadge = dateLabel ? `<span class="task-meta-date${dateLabel === '오늘' ? ' today' : dateLabel === '지남' ? ' past' : ''}">${dateLabel}</span>` : '';
 
-  // Meta row (only if has alert)
+  // Meta row (always shown if any of: alert / snooze / non-today date)
   let metaHtml = '';
-  if (hasAlert || snoozeBadge) {
+  if (hasAlert || snoozeBadge || dateBadge) {
     const chIcons = (task.alertChannels || []).map(c => `<span class="task-meta-ch">${CHANNEL_ICONS[c]||''}</span>`).join('');
     const repLabel = task.repeat && task.repeat !== 'ONCE' ? `<span class="task-meta-repeat">${REPEAT_LABELS[task.repeat]}</span>` : '';
     metaHtml = `
       <div class="task-meta">
+        ${dateBadge}
         ${hasAlert ? `<span class="task-meta-time">⏰ ${task.alertTime}</span>` : ''}
         ${repLabel}
         ${snoozeBadge}
@@ -2205,10 +2239,12 @@ function updateBottomNav() {
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
 async function init() {
+  // Cache version BEFORE first render so the header has it
+  await loadAppVersion();
+
   // Initial render (skeleton)
   fullRender();
   startClock();
-  updateVersionLabel();
 
   // Load data
   try {
@@ -3033,28 +3069,81 @@ function mountV2Overlay() {
       if (res.hasUpdate) {
         const back = document.createElement('div');
         back.className = 'v2-dlg-backdrop';
+        back.id = 'v2-upd-dlg';
         back.innerHTML = `
-          <div class="v2-dlg" onclick="event.stopPropagation()" style="width:320px;">
-            <h2>⬇️ 새 버전 있음</h2>
-            <div style="font-size:13px;color:var(--text);">
-              현재 버전: <b>${res.current}</b><br>
-              최신 버전: <b style="color:var(--primary)">${res.latest}</b>
+          <div class="v2-dlg" onclick="event.stopPropagation()" style="width:380px;padding:0;gap:0;">
+            <div style="padding:16px 16px 0 16px;flex-shrink:0;display:flex;justify-content:space-between;align-items:center;">
+              <h2>⬇️ 새 버전 있음</h2>
+              <button class="v2-mini-btn" id="v2-upd-close-x" style="padding:4px 10px;">✕</button>
             </div>
-            ${res.notes ? `<div style="font-size:12px;color:var(--text-muted);background:var(--surface2);padding:8px 10px;border-radius:6px;white-space:pre-wrap;">${String(res.notes).replace(/</g,'&lt;')}</div>` : ''}
-            <div style="font-size:11px;color:var(--text-light);line-height:1.5;">
-              다운로드 후 기존 앱을 끄고 덮어써주세요. 할일/설정은 그대로 유지됩니다.
+            <div style="padding:0 16px;flex:1 1 auto;overflow-y:auto;display:flex;flex-direction:column;gap:10px;min-height:0;">
+              <div style="font-size:13px;color:var(--text);">
+                현재 버전: <b>${res.current}</b> &nbsp; → &nbsp; 최신 버전: <b style="color:var(--primary)">${res.latest}</b>
+              </div>
+              ${res.notes ? `<div style="font-size:12px;color:var(--text-muted);background:var(--surface2);padding:8px 10px;border-radius:6px;white-space:pre-wrap;line-height:1.5;">${String(res.notes).replace(/</g,'&lt;')}</div>` : ''}
+              <div style="font-size:11px;color:var(--text-light);line-height:1.5;">
+                자동 설치를 누르면 다운로드 후 앱이 종료되고 새 버전으로 자동 재시작됩니다. 할일·설정·알림 모두 그대로 유지됩니다.
+              </div>
+              <div id="v2-upd-progress" style="display:none;">
+                <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;" id="v2-upd-progress-label">다운로드 중...</div>
+                <div style="height:6px;background:var(--surface2);border-radius:3px;overflow:hidden;">
+                  <div id="v2-upd-progress-bar" style="height:100%;background:var(--primary);width:0%;transition:width 0.2s;"></div>
+                </div>
+              </div>
             </div>
-            <div style="display:flex;gap:8px;">
-              <button class="v2-mini-btn" id="v2-upd-close" style="flex:1;padding:9px;">나중에</button>
-              <button class="v2-mini-btn primary" id="v2-upd-download" style="flex:2;padding:9px;font-size:13px;">📥 다운로드</button>
+            <div style="padding:12px 16px 14px 16px;border-top:1px solid var(--border);flex-shrink:0;background:var(--surface);" id="v2-upd-actions-wrap">
+              <div style="display:flex;gap:8px;" id="v2-upd-actions">
+                <button class="v2-mini-btn" id="v2-upd-close" style="flex:1;padding:9px;">나중에</button>
+                <button class="v2-mini-btn" id="v2-upd-browser" style="flex:1;padding:9px;font-size:11px;">브라우저</button>
+                <button class="v2-mini-btn primary" id="v2-upd-install" style="flex:2;padding:9px;font-size:13px;">📥 자동 설치</button>
+              </div>
             </div>
           </div>`;
-        back.onclick = () => back.remove();
+        const closeFn = () => back.remove();
+        back.onclick = closeFn;
         document.body.appendChild(back);
-        document.getElementById('v2-upd-close').onclick = () => back.remove();
-        document.getElementById('v2-upd-download').onclick = () => {
+        document.getElementById('v2-upd-close').onclick = closeFn;
+        document.getElementById('v2-upd-close-x').onclick = closeFn;
+
+        // Manual fallback (browser)
+        document.getElementById('v2-upd-browser').onclick = () => {
           if (res.downloadUrl) window.timeping.openExternal(res.downloadUrl);
-          back.remove();
+          closeFn();
+        };
+
+        // Auto-install: download + replace + relaunch
+        document.getElementById('v2-upd-install').onclick = async () => {
+          if (!res.downloadUrl) return showToast('다운로드 URL을 찾을 수 없습니다', 'error');
+          // Switch to progress UI
+          document.getElementById('v2-upd-actions').style.display = 'none';
+          document.getElementById('v2-upd-progress').style.display = '';
+          const bar = document.getElementById('v2-upd-progress-bar');
+          const label = document.getElementById('v2-upd-progress-label');
+
+          const offProgress = window.timeping.onUpdateProgress(({ downloaded, total }) => {
+            if (total > 0) {
+              const pct = Math.min(100, Math.round((downloaded / total) * 100));
+              bar.style.width = pct + '%';
+              label.textContent = `다운로드 중... ${pct}% (${(downloaded/1024/1024).toFixed(1)} / ${(total/1024/1024).toFixed(1)} MB)`;
+            } else {
+              label.textContent = `다운로드 중... ${(downloaded/1024/1024).toFixed(1)} MB`;
+            }
+          });
+
+          const r = await window.timeping.installUpdate(res.downloadUrl, res.latest);
+          if (r.ok) {
+            label.textContent = '✓ 설치 준비 완료. 곧 재시작됩니다...';
+            bar.style.width = '100%';
+            // App will quit + relaunch via the helper script
+          } else {
+            label.textContent = '';
+            bar.style.width = '0%';
+            document.getElementById('v2-upd-progress').style.display = 'none';
+            document.getElementById('v2-upd-actions').style.display = '';
+            showToast('자동 설치 실패: ' + (r.error || ''), 'error');
+            // Fallback — open download in browser
+            if (res.downloadUrl) window.timeping.openExternal(res.downloadUrl);
+          }
         };
       } else {
         showToast(`✓ 최신 버전입니다 (${res.current})`, 'success');
