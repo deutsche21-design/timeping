@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', sans-serif;
+    background: transparent;
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+    width: 400px;
+  }
+
+  @keyframes slideIn {
+    from { opacity: 0; transform: translateX(16px) scale(0.96); }
+    to   { opacity: 1; transform: translateX(0)    scale(1);    }
+  }
+
+  .card {
+    width: 400px;
+    background: linear-gradient(145deg, rgba(24,26,40,0.98) 0%, rgba(30,32,48,0.98) 100%);
+    border-radius: 18px;
+    color: white;
+    display: flex; flex-direction: column;
+    box-shadow:
+      0 24px 64px rgba(0,0,0,0.65),
+      0 4px 20px rgba(0,0,0,0.4),
+      inset 0 1px 0 rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.08);
+    overflow: hidden;
+    -webkit-app-region: drag;
+    animation: slideIn 0.28s cubic-bezier(0.34,1.4,0.64,1);
+  }
+
+  .card.poke  { border-color: rgba(245,158,11,0.35); }
+  .card.memo  { border-color: rgba(99,102,241,0.35); }
+  .card.optional { border-color: rgba(139,92,246,0.35); }
+
+  .body { padding: 16px 18px; display: flex; flex-direction: column; gap: 12px; }
+
+  .top { display: flex; align-items: flex-start; gap: 12px; }
+
+  .badge {
+    width: 42px; height: 42px; border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px; flex-shrink: 0;
+    background: rgba(99,102,241,0.22);
+  }
+  .card.poke .badge { background: rgba(245,158,11,0.22); }
+  .card.optional .badge { background: rgba(139,92,246,0.22); }
+
+  .txt { flex: 1; min-width: 0; }
+  .type-label {
+    font-size: 10px; font-weight: 800; letter-spacing: 0.8px;
+    text-transform: uppercase; color: rgba(255,255,255,0.5);
+    margin-bottom: 3px;
+  }
+  .card.poke .type-label { color: #fbbf24; }
+  .card.memo .type-label { color: #a5b4fc; }
+  .card.optional .type-label { color: #c4b5fd; }
+
+  .from {
+    font-size: 12px; color: rgba(255,255,255,0.55); margin-bottom: 6px;
+  }
+
+  .title {
+    font-size: 15px; font-weight: 700; line-height: 1.4;
+    color: #fff; word-break: break-word;
+  }
+
+  .content-box {
+    font-size: 13px; color: rgba(255,255,255,0.82); line-height: 1.55;
+    max-height: 120px; overflow-y: auto; white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .content-box::-webkit-scrollbar { width: 4px; }
+  .content-box::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 2px; }
+
+  .poke-meta {
+    display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px;
+  }
+  .tag {
+    font-size: 10px; font-weight: 700; padding: 3px 9px;
+    border-radius: 20px; letter-spacing: 0.2px;
+  }
+  .tag-time { background: rgba(245,158,11,0.2); color: #fbbf24; }
+  .tag-date { background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.6); }
+  .tag-rep  { background: rgba(99,102,241,0.22); color: #a5b4fc; }
+  .tag-opt  { background: rgba(139,92,246,0.22); color: #c4b5fd; }
+
+  .btn-row { display: flex; gap: 8px; -webkit-app-region: no-drag; flex-wrap: wrap; }
+  .btn {
+    flex: 1; min-width: 0; padding: 10px 0; border: none; border-radius: 11px;
+    font-size: 13px; font-weight: 700; cursor: pointer;
+    transition: all .15s; white-space: nowrap;
+  }
+  .btn-ghost {
+    background: rgba(255,255,255,0.07);
+    color: rgba(255,255,255,0.7);
+    border: 1px solid rgba(255,255,255,0.1);
+  }
+  .btn-ghost:hover { background: rgba(255,255,255,0.14); }
+
+  .btn-accept {
+    background: linear-gradient(135deg,#10b981 0%,#059669 100%);
+    color: #fff;
+    box-shadow: 0 4px 12px rgba(16,185,129,0.35);
+  }
+  .btn-accept:hover { transform: translateY(-1px); box-shadow: 0 6px 16px rgba(16,185,129,0.45); }
+
+  .btn-decline {
+    background: rgba(239,68,68,0.18);
+    color: #fca5a5;
+    border: 1px solid rgba(239,68,68,0.3);
+  }
+  .btn-decline:hover { background: rgba(239,68,68,0.3); }
+
+  .btn-primary {
+    background: linear-gradient(135deg,#6366f1 0%,#8b5cf6 100%);
+    color: #fff;
+    box-shadow: 0 4px 12px rgba(99,102,241,0.4);
+  }
+  .btn-primary:hover { transform: translateY(-1px); }
+
+  .check-row {
+    display: flex; align-items: center; gap: 8px;
+    margin-top: 2px;
+    -webkit-app-region: no-drag;
+  }
+  .check-row input { accent-color: #8b5cf6; width: 16px; height: 16px; cursor: pointer; }
+  .check-row label {
+    font-size: 12px; color: rgba(255,255,255,0.75);
+    cursor: pointer; user-select: none;
+  }
+
+  /* Reply form */
+  .reply-form {
+    display: flex; flex-direction: column; gap: 8px;
+    -webkit-app-region: no-drag;
+    padding: 10px; background: rgba(0,0,0,0.25);
+    border-radius: 10px; border: 1px solid rgba(255,255,255,0.08);
+  }
+  .reply-form textarea {
+    width: 100%; min-height: 60px; max-height: 120px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.1);
+    color: #fff; font-size: 13px; padding: 8px 10px;
+    border-radius: 8px; outline: none;
+    font-family: inherit; resize: vertical;
+    -webkit-app-region: no-drag;
+  }
+  .reply-form textarea:focus { border-color: #8b5cf6; }
+  .reply-form textarea::placeholder { color: rgba(255,255,255,0.35); }
+  .reply-form-actions { display: flex; gap: 8px; }
+  .reply-form-actions button {
+    padding: 7px 14px; font-size: 12px;
+  }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+<div class="card" id="card">
+  <div class="body">
+    <div class="top">
+      <div class="badge" id="badge">📩</div>
+      <div class="txt">
+        <div class="type-label" id="type-label">쪽지</div>
+        <div class="from" id="from"></div>
+        <div class="title" id="title"></div>
+      </div>
+    </div>
+
+    <div class="content-box" id="content"></div>
+    <div class="poke-meta" id="poke-meta" style="display:none"></div>
+
+    <div class="check-row" id="add-to-schedule-row" style="display:none">
+      <input type="checkbox" id="add-to-schedule" />
+      <label for="add-to-schedule">확인 후 일정에 등록</label>
+    </div>
+
+    <div class="btn-row" id="btns"></div>
+
+    <div class="reply-form hidden" id="reply-form">
+      <textarea id="reply-text" placeholder="답장 내용을 입력하세요..." maxlength="1000"></textarea>
+      <div class="reply-form-actions">
+        <button class="btn btn-ghost" id="reply-cancel">취소</button>
+        <button class="btn btn-primary" id="reply-send">보내기</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const params = new URLSearchParams(window.location.search);
+  let msg = {};
+  try { msg = JSON.parse(decodeURIComponent(params.get('m') || '{}')); } catch(e) {}
+
+  const card = document.getElementById('card');
+  const type = msg.type || 'memo';
+  card.classList.add(type);
+  const isOptional = type === 'poke' && msg.payload?.optional;
+  if (isOptional) card.classList.add('optional');
+
+  let typeLabelText;
+  if (type === 'poke') typeLabelText = isOptional ? '📎 참조 일정' : '📌 일정 찌르기';
+  else typeLabelText = '📩 쪽지';
+  document.getElementById('type-label').textContent = typeLabelText;
+  document.getElementById('badge').textContent      = type === 'poke' ? (isOptional ? '📎' : '📌') : '📩';
+  document.getElementById('from').textContent       = `보낸 사람: ${msg.fromName || msg.from || '알 수 없음'}`;
+
+  const payload = msg.payload || {};
+  if (type === 'memo') {
+    document.getElementById('title').textContent   = payload.title || '쪽지 도착';
+    document.getElementById('content').textContent = payload.text || '';
+  } else {
+    document.getElementById('title').textContent = payload.title || '';
+    document.getElementById('content').textContent = payload.memo || '';
+    const meta = document.getElementById('poke-meta');
+    const REP_LABELS = { DAILY: '매일', WEEKLY: '매주', MONTHLY: '매월' };
+    function addTag(text, cls) {
+      const t = document.createElement('span');
+      t.className = 'tag ' + cls;
+      t.textContent = text;
+      meta.appendChild(t);
+    }
+    if (payload.alertTime)  addTag('⏰ ' + payload.alertTime, 'tag-time');
+    if (payload.targetDate) addTag('📅 ' + payload.targetDate, 'tag-date');
+    if (payload.repeat && payload.repeat !== 'ONCE') {
+      addTag('🔁 ' + (REP_LABELS[payload.repeat] || payload.repeat) + ' 반복', 'tag-rep');
+    }
+    if (isOptional) addTag('선택 참여', 'tag-opt');
+    meta.style.display = meta.childElementCount ? '' : 'none';
+  }
+
+  const btns = document.getElementById('btns');
+  if (type === 'poke') {
+    if (isOptional) {
+      // Optional poke: include a "add to my calendar" checkbox (default ON
+      // so accepting = adding to their calendar, declining = dismiss)
+      document.getElementById('add-to-schedule-row').style.display = '';
+      document.getElementById('add-to-schedule').checked = true;
+      btns.innerHTML = `
+        <button class="btn btn-ghost"  id="reply-btn">💬 답장</button>
+        <button class="btn btn-decline" id="decline-btn">닫기</button>
+        <button class="btn btn-accept"  id="accept-btn">확인</button>
+      `;
+      document.getElementById('decline-btn').onclick = () => {
+        window.timeping.remoteRespondPoke(msg.id, false);
+        window.timeping.memoDismiss(msg.id, false);
+        window.close();
+      };
+      document.getElementById('accept-btn').onclick = () => {
+        const addIt = document.getElementById('add-to-schedule').checked;
+        window.timeping.remoteRespondPoke(msg.id, true);
+        window.timeping.memoDismiss(msg.id, addIt);
+        window.close();
+      };
+    } else {
+      btns.innerHTML = `
+        <button class="btn btn-ghost"  id="reply-btn">💬 답장</button>
+        <button class="btn btn-decline" id="decline-btn">거절</button>
+        <button class="btn btn-accept"  id="accept-btn">수락</button>
+      `;
+      document.getElementById('decline-btn').onclick = () => {
+        window.timeping.remoteRespondPoke(msg.id, false);
+        window.timeping.memoDismiss(msg.id, false);
+        window.close();
+      };
+      document.getElementById('accept-btn').onclick = () => {
+        window.timeping.remoteRespondPoke(msg.id, true);
+        window.timeping.memoDismiss(msg.id, true);
+        window.close();
+      };
+    }
+  } else {
+    document.getElementById('add-to-schedule-row').style.display = '';
+    btns.innerHTML = `
+      <button class="btn btn-ghost"   id="reply-btn">💬 답장</button>
+      <button class="btn btn-primary" id="confirm-btn">확인</button>
+    `;
+    document.getElementById('confirm-btn').onclick = () => {
+      const chk = document.getElementById('add-to-schedule').checked;
+      window.timeping.memoDismiss(msg.id, chk);
+      window.close();
+    };
+  }
+
+  // ── Reply inline form ───────────────────────────────────────────
+  const replyBtn   = document.getElementById('reply-btn');
+  const replyForm  = document.getElementById('reply-form');
+  const replyText  = document.getElementById('reply-text');
+  const replyCancel = document.getElementById('reply-cancel');
+  const replySend  = document.getElementById('reply-send');
+
+  if (replyBtn) {
+    replyBtn.onclick = () => {
+      replyForm.classList.remove('hidden');
+      btns.style.display = 'none';
+      setTimeout(() => replyText.focus(), 50);
+      // Ask main to resize to fit the new content
+      reportSize();
+    };
+  }
+  replyCancel.onclick = () => {
+    replyForm.classList.add('hidden');
+    btns.style.display = '';
+    reportSize();
+  };
+  replySend.onclick = async () => {
+    const t = replyText.value.trim();
+    if (!t) { replyText.focus(); return; }
+    replySend.disabled = true;
+    try {
+      const r = await window.timeping.remoteReply(msg.id, t);
+      if (r && r.ok) {
+        // Also mark original as read so it disappears from unread badge
+        try { await window.timeping.remoteMarkRead(msg.id); } catch {}
+        window.close();
+      } else {
+        alert('답장 실패: ' + (r?.error || '알 수 없음'));
+        replySend.disabled = false;
+      }
+    } catch (e) {
+      alert('답장 실패: ' + e.message);
+      replySend.disabled = false;
+    }
+  };
+
+  function reportSize() {
+    const h = Math.ceil(card.getBoundingClientRect().height);
+    if (window.timeping && window.timeping.popupResize) {
+      window.timeping.popupResize(h);
+    }
+  }
+  requestAnimationFrame(() => requestAnimationFrame(reportSize));
+</script>
+</body>
+</html>

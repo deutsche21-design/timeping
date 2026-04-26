@@ -1,0 +1,84 @@
+{
+  "name": "kkameokji",
+  "version": "2.1.0",
+  "description": "까먹지 말자 — 할일 & 알림 앱",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "bundle": "node scripts/bundle.js",
+    "build:mac": "npm run bundle && electron-builder --mac",
+    "build:win": "npm run bundle && electron-builder --win",
+    "build:all": "npm run bundle && electron-builder --mac --win",
+    "postinstall": "electron-builder install-app-deps"
+  },
+  "build": {
+    "appId": "ai.genesislab.kkameokji",
+    "productName": "까먹지 말자",
+    "asar": true,
+    "compression": "maximum",
+    "extraMetadata": {
+      "main": "main.bundle.js"
+    },
+    "files": [
+      "main.bundle.js",
+      "preload.js",
+      "renderer/**",
+      "assets/**"
+    ],
+    "mac": {
+      "target": [
+        {
+          "target": "zip",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.icns",
+      "identity": null,
+      "artifactName": "까먹지말자-${version}-mac-${arch}.zip",
+      "category": "public.app-category.productivity"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.ico"
+    },
+    "nsis": {
+      "oneClick": true,
+      "runAfterFinish": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "까먹지 말자",
+      "artifactName": "까먹지말자-setup-${version}.exe"
+    },
+    "portable": {
+      "artifactName": "까먹지말자-portable-${version}.exe"
+    },
+    "afterPack": "./scripts/afterPack.js"
+  },
+  "dependencies": {
+    "electron-store": "^8.2.0",
+    "node-cron": "^3.0.3",
+    "nodemailer": "^6.9.9",
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "electron": "^38.0.0",
+    "electron-builder": "^25.1.8",
+    "esbuild": "^0.20.2"
+  }
+}

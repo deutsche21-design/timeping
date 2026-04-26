@@ -1,0 +1,24 @@
+# Dependencies
+node_modules/
+
+# Build output (uploaded as Release assets, not in repo)
+dist/
+
+# OS / editor cruft
+.DS_Store
+*.log
+.vscode/
+.idea/
+
+# Local env / secrets
+.env
+.env.*
+!.env.example
+
+# OAuth credentials — embedded in binaries but NOT in public repo.
+# Copy src/config.example.json → src/config.json and fill in your own values
+# from Google Cloud Console (https://console.cloud.google.com/apis/credentials).
+src/config.json
+
+# Backup data
+*.bak

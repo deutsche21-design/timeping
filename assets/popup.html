@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', sans-serif;
+    background: transparent;
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+    width: 380px;
+    margin: 0;
+    padding: 0;
+  }
+
+  @keyframes slideIn {
+    from { opacity: 0; transform: translateX(16px) scale(0.96); }
+    to   { opacity: 1; transform: translateX(0)    scale(1);    }
+  }
+
+  .popup {
+    width: 380px;
+    background: linear-gradient(145deg, rgba(16,16,22,0.98) 0%, rgba(22,22,32,0.98) 100%);
+    border-radius: 18px;
+    color: white;
+    display: flex;
+    flex-direction: column;
+    box-shadow:
+      0 24px 64px rgba(0,0,0,0.65),
+      0 4px 20px rgba(0,0,0,0.4),
+      inset 0 1px 0 rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.07);
+    overflow: hidden;
+    -webkit-app-region: drag;
+    animation: slideIn 0.28s cubic-bezier(0.34,1.4,0.64,1);
+  }
+
+  .body { padding: 14px 16px 14px; display: flex; flex-direction: column; gap: 10px; }
+
+  .top-row { display: flex; align-items: flex-start; gap: 11px; }
+
+  .icon-wrap {
+    width: 38px; height: 38px; border-radius: 11px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px; flex-shrink: 0;
+    background: rgba(99,102,241,0.18);
+  }
+
+  .text-area { flex: 1; min-width: 0; }
+  .app-label {
+    font-size: 10px; font-weight: 700; letter-spacing: 0.8px;
+    text-transform: uppercase; color: rgba(255,255,255,0.38);
+    margin-bottom: 3px;
+  }
+  .title {
+    font-size: 15px; font-weight: 700; line-height: 1.35;
+    color: #fff; word-break: break-word;
+  }
+  .memo-text {
+    font-size: 12px; color: rgba(255,255,255,0.45);
+    margin-top: 4px; overflow: hidden; text-overflow: ellipsis;
+    white-space: nowrap; max-width: 270px;
+  }
+
+  .meta-row { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; min-height: 0; }
+  .meta-row:empty { display: none; }
+  .tag {
+    font-size: 10px; font-weight: 700; padding: 2px 8px;
+    border-radius: 20px; letter-spacing: 0.2px;
+  }
+  .tag-time   { background: rgba(255,255,255,0.07); color: rgba(255,255,255,0.5); }
+  .tag-repeat { background: rgba(99,102,241,0.22);  color: #a5b4fc; }
+
+  .btn-row { display: flex; gap: 8px; -webkit-app-region: no-drag; position: relative; }
+  .btn {
+    flex: 1; padding: 10px 0; border: none; border-radius: 11px;
+    font-size: 13px; font-weight: 700; cursor: pointer;
+    transition: all .15s; white-space: nowrap;
+  }
+  .btn-ghost {
+    background: rgba(255,255,255,0.07);
+    color: rgba(255,255,255,0.65);
+    border: 1px solid rgba(255,255,255,0.1);
+  }
+  .btn-ghost:hover { background: rgba(255,255,255,0.14); }
+
+  .btn-complete {
+    background: linear-gradient(135deg,#6366f1 0%,#8b5cf6 100%);
+    color: #fff;
+    box-shadow: 0 4px 14px rgba(99,102,241,0.45);
+  }
+  .btn-complete:hover {
+    background: linear-gradient(135deg,#5254cc 0%,#7c3aed 100%);
+    box-shadow: 0 6px 18px rgba(99,102,241,0.55);
+    transform: translateY(-1px);
+  }
+  .btn-complete:active { transform: translateY(0); box-shadow: none; }
+
+  .snooze-menu {
+    position: absolute; bottom: calc(100% + 6px); left: 0;
+    background: rgba(30,30,42,0.98);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 10px;
+    padding: 4px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+    display: flex; flex-direction: column; gap: 1px;
+    min-width: 140px; z-index: 5;
+  }
+  .snooze-menu.hidden { display: none; }
+  .snooze-menu-item {
+    padding: 7px 12px; font-size: 12px; font-weight: 600;
+    color: rgba(255,255,255,0.8); cursor: pointer;
+    border-radius: 6px; user-select: none;
+    -webkit-app-region: no-drag;
+  }
+  .snooze-menu-item:hover { background: rgba(255,255,255,0.1); }
+</style>
+</head>
+<body>
+<div class="popup" id="popup">
+  <div class="body">
+    <div class="top-row">
+      <div class="icon-wrap" id="icon">⏰</div>
+      <div class="text-area">
+        <div class="app-label">까먹지 말자 알림</div>
+        <div class="title" id="title">할 일 제목</div>
+        <div class="memo-text" id="memo" style="display:none;"></div>
+      </div>
+    </div>
+
+    <div class="meta-row" id="meta-row"></div>
+
+    <div class="btn-row">
+      <button class="btn btn-ghost" id="snooze-btn">⏰ 스누즈</button>
+      <button class="btn btn-complete" id="complete-btn">✓ 완료 처리</button>
+      <div class="snooze-menu hidden" id="snooze-menu">
+        <div class="snooze-menu-item" data-min="1">1분 후</div>
+        <div class="snooze-menu-item" data-min="5">5분 후</div>
+        <div class="snooze-menu-item" data-min="10">10분 후</div>
+        <div class="snooze-menu-item" data-min="30">30분 후</div>
+        <div class="snooze-menu-item" data-min="60">1시간 후</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const params = new URLSearchParams(window.location.search);
+  let task = {};
+  try { task = JSON.parse(decodeURIComponent(params.get('task') || '{}')); } catch(e) {}
+
+  const REP_LABELS = { DAILY: '매일 반복', WEEKLY: '매주 반복', MONTHLY: '매월 반복' };
+
+  document.getElementById('title').textContent = task.title || '알림';
+
+  if (task.memo) {
+    const m = document.getElementById('memo');
+    m.textContent = task.memo;
+    m.style.display = '';
+  }
+
+  const metaRow = document.getElementById('meta-row');
+  function addTag(text, cls) {
+    const t = document.createElement('span');
+    t.className = 'tag ' + cls;
+    t.textContent = text;
+    metaRow.appendChild(t);
+  }
+  if (task.alertTime) addTag('⏰ ' + task.alertTime, 'tag-time');
+  if (task.repeat && task.repeat !== 'ONCE') addTag(REP_LABELS[task.repeat] || task.repeat, 'tag-repeat');
+
+  function reportSize() {
+    const popup = document.getElementById('popup');
+    const h = Math.ceil(popup.getBoundingClientRect().height);
+    if (window.timeping && window.timeping.popupResize) {
+      window.timeping.popupResize(h);
+    }
+  }
+  requestAnimationFrame(() => requestAnimationFrame(reportSize));
+
+  function playSound() {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      function note(freq, t, dur) {
+        const osc = ctx.createOscillator(), g = ctx.createGain();
+        osc.connect(g); g.connect(ctx.destination);
+        osc.type = 'sine'; osc.frequency.value = freq;
+        g.gain.setValueAtTime(0, ctx.currentTime + t);
+        g.gain.linearRampToValueAtTime(0.20, ctx.currentTime + t + 0.01);
+        g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + t + dur);
+        osc.start(ctx.currentTime + t);
+        osc.stop(ctx.currentTime + t + dur);
+      }
+      note(523, 0,    0.28);
+      note(659, 0.13, 0.32);
+      note(784, 0.26, 0.42);
+    } catch(e) {}
+  }
+  setTimeout(playSound, 80);
+
+  // Notify main that this popup was acknowledged so 3-min re-fire stops
+  function ack(action) {
+    if (window.timeping && window.timeping.ackAlert) {
+      try { window.timeping.ackAlert(task.id, action); } catch(e) {}
+    }
+  }
+
+  document.getElementById('complete-btn').onclick = async () => {
+    ack('complete');
+    if (task.id && window.timeping) {
+      try { await window.timeping.completeTask(task.id); } catch(e) {}
+    }
+    window.close();
+  };
+
+  // Snooze with duration menu
+  const snoozeBtn = document.getElementById('snooze-btn');
+  const snoozeMenu = document.getElementById('snooze-menu');
+  snoozeBtn.onclick = (e) => {
+    e.stopPropagation();
+    snoozeMenu.classList.toggle('hidden');
+    reportSize();
+  };
+  snoozeMenu.onclick = (e) => {
+    const item = e.target.closest('[data-min]');
+    if (!item) return;
+    const minutes = Number(item.dataset.min);
+    ack('snooze');
+    if (task.id && window.timeping && window.timeping.snoozeTask) {
+      try { window.timeping.snoozeTask(task.id, minutes); } catch(e) {}
+    }
+    window.close();
+  };
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('#snooze-menu') && !e.target.closest('#snooze-btn')) {
+      snoozeMenu.classList.add('hidden');
+      reportSize();
+    }
+  });
+
+  // Block close-without-action: if window is closed by other means (e.g.
+  // Cmd+W), main process re-fires after 3 minutes via the pending-alert system.
+</script>
+</body>
+</html>

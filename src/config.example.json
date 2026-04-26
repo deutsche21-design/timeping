@@ -1,0 +1,5 @@
+{
+  "_comment": "Copy this file to src/config.json and fill in your Google OAuth credentials. Create a Desktop OAuth client at https://console.cloud.google.com/apis/credentials in the same GCP project as your Firebase setup.",
+  "client_id": "YOUR_CLIENT_ID.apps.googleusercontent.com",
+  "client_secret": "YOUR_CLIENT_SECRET"
+}
