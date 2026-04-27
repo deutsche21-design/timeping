@@ -24,7 +24,13 @@ const IDP_URL   = `https://identitytoolkit.googleapis.com/v1/accounts:signInWith
 const REFRESH_URL = `https://securetoken.googleapis.com/v1/token?key=${firebaseConfig.apiKey}`;
 const FS_BASE  = `https://firestore.googleapis.com/v1/projects/${firebaseConfig.projectId}/databases/(default)/documents`;
 
-const POLL_INTERVAL_MS = 5000;
+// Poll interval. Was 5s on initial release but that exhausts the Firestore
+// free-tier quota (50K reads/day) within ~3 hours of being open. 60s is plenty
+// for a chat-style notification UX and stays comfortably within free quota.
+const POLL_INTERVAL_MS = 60 * 1000;
+// On quota errors, back off for 30 min before resuming polls.
+const QUOTA_BACKOFF_MS = 30 * 60 * 1000;
+let backoffUntil = 0;
 
 let pollTimer = null;
 let inboxCache = [];            // latest fetched inbox
@@ -238,6 +244,12 @@ async function ensureUserProfile() {
 }
 
 async function listContactsSameDomain() {
+  // Defensive: re-run profile registration in case the initial init() failed
+  // (e.g. transient quota error on first launch). Idempotent server-side.
+  try { await ensureUserProfile(); } catch (e) {
+    console.warn('ensureUserProfile retry on listContacts:', e.message);
+  }
+
   const auth = await getValidAuth();
   const myDomain = (auth.email || '').split('@')[1] || '';
   if (!myDomain) return [];
@@ -338,6 +350,11 @@ async function fetchInbox(limit = 50) {
     body,
     headers: { Authorization: `Bearer ${auth.idToken}` },
   });
+  if (res.status === 429) {
+    backoffUntil = Date.now() + QUOTA_BACKOFF_MS;
+    console.warn('Firestore quota exceeded — backing off for 30 min');
+    return [];
+  }
   if (res.status !== 200) {
     console.error('fetchInbox error:', res.status, res.data);
     return [];
@@ -357,9 +374,9 @@ function onInboxUpdate(cb) {
 }
 
 async function pollOnce() {
+  if (Date.now() < backoffUntil) return;   // wait out quota throttle
   try {
     const items = await fetchInbox();
-    // Compute which items are newly arrived (wasn't in previous cache)
     const prevIds = new Set(inboxCache.map(m => m.id));
     const newArrivals = items.filter(m => !prevIds.has(m.id) && m.status === 'unread');
     inboxCache = items;
