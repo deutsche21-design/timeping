@@ -148,7 +148,18 @@ BACKUP="${TARGET}.old-$$"
 
 async function winUpdate(url, version, onProgress) {
   const dir = userUpdatesDir();
-  const isPortable = url.includes('portable');
+
+  // Path A: .zip — extract via built-in `tar.exe` (Win10+) into the install
+  //   dir directly, replacing app files. Bypasses SmartScreen because we
+  //   never execute an unsigned setup.exe.
+  // Path B: setup.exe / portable.exe — legacy fallback (may be blocked).
+  const isZip = url.endsWith('.zip');
+  const isPortable = !isZip && url.includes('portable');
+
+  if (isZip) {
+    return await winUpdateZip(url, version, dir, onProgress);
+  }
+
   const exeName = isPortable
     ? `kkameokji-portable-${version}.exe`
     : `kkameokji-setup-${version}.exe`;
@@ -156,15 +167,80 @@ async function winUpdate(url, version, onProgress) {
 
   await downloadFile(url, exePath, onProgress);
 
-  // Spawn the installer detached. NSIS oneClick installer:
-  //   - silent install (`/S`)
-  //   - kills running instance, installs, runs after finish (configured in package.json)
-  // Portable build is a single exe — just launch it.
   if (isPortable) {
     spawn(exePath, [], { detached: true, stdio: 'ignore' }).unref();
   } else {
     spawn(exePath, ['/S'], { detached: true, stdio: 'ignore' }).unref();
   }
+  setTimeout(() => app.quit(), 800);
+}
+
+async function winUpdateZip(url, version, dir, onProgress) {
+  const zipPath = path.join(dir, `kkameokji-${version}-win.zip`);
+  await downloadFile(url, zipPath, onProgress);
+
+  // Locate install dir = parent of currently-running .exe
+  const exePath = app.getPath('exe');
+  const installDir = path.dirname(exePath);
+  const exeName = path.basename(exePath);
+  const stageDir = path.join(installDir, '.update-stage');
+  const oldPid = process.pid;
+
+  // Helper batch: wait for old process → extract → swap files → relaunch.
+  const batPath = path.join(dir, `install-${version}.bat`);
+  // We hard-code paths into the .bat (no command-line args) so quoting is
+  // consistent and Korean-character paths survive cleanly.
+  const bat = `@echo off
+chcp 65001 >nul
+
+set "OLD_PID=${oldPid}"
+set "ZIP=${zipPath}"
+set "TARGET=${installDir}"
+set "STAGE=${stageDir}"
+set "EXE=${exeName}"
+
+REM Wait up to 30s for the old process to exit
+for /L %%i in (1,1,60) do (
+  tasklist /FI "PID eq %OLD_PID%" 2>nul | find /I "%OLD_PID%" >nul
+  if errorlevel 1 goto extract
+  timeout /T 1 /NOBREAK >nul
+)
+
+:extract
+if exist "%STAGE%" rmdir /S /Q "%STAGE%"
+mkdir "%STAGE%"
+
+REM tar.exe is built into Windows 10 1803+ and can extract .zip
+tar -xf "%ZIP%" -C "%STAGE%"
+if errorlevel 1 (
+  echo Extract failed >> "%TEMP%\\kkameokji-update.log"
+  exit /b 1
+)
+
+REM Mirror staged files over the install dir
+xcopy "%STAGE%\\*" "%TARGET%\\" /E /Y /Q /I
+if errorlevel 1 (
+  echo Copy failed >> "%TEMP%\\kkameokji-update.log"
+  exit /b 1
+)
+
+REM Cleanup staging
+rmdir /S /Q "%STAGE%" 2>nul
+del "%ZIP%" 2>nul
+
+REM Relaunch
+start "" "%TARGET%\\%EXE%"
+
+REM Self-delete the .bat (best-effort)
+(goto) 2>nul & del "%~f0"
+`;
+  fs.writeFileSync(batPath, bat);
+
+  spawn('cmd.exe', ['/C', batPath], {
+    detached: true,
+    stdio: 'ignore',
+    windowsHide: true,
+  }).unref();
 
   setTimeout(() => app.quit(), 800);
 }

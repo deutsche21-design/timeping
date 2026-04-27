@@ -451,7 +451,10 @@ async function fetchLatestVersionInfo() {
       const archTag = arch === 'arm64' ? 'mac-arm64' : 'mac-x64';
       pick = assets.find(a => a.name.includes(archTag) && a.name.endsWith('.zip'));
     } else if (platform === 'win32') {
-      pick = assets.find(a => a.name.includes('setup') && a.name.endsWith('.exe'))
+      // Prefer .zip — extracting it via tar.exe + xcopy avoids running an
+      // unsigned setup.exe (which Windows Defender / SmartScreen often blocks).
+      pick = assets.find(a => a.name.includes('win') && a.name.endsWith('.zip'))
+          || assets.find(a => a.name.includes('setup') && a.name.endsWith('.exe'))
           || assets.find(a => a.name.includes('portable') && a.name.endsWith('.exe'));
     }
     // Fallback: html_url so user can pick manually
