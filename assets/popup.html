@@ -49,6 +49,28 @@
   }
 
   .text-area { flex: 1; min-width: 0; }
+
+  /* Top-right "just close" — does NOT acknowledge, so the 3-min re-fire
+     timer in main.js stays armed and the alert pops again automatically. */
+  .close-btn {
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.08);
+    color: rgba(255,255,255,0.55);
+    cursor: pointer;
+    width: 24px; height: 24px;
+    border-radius: 6px;
+    font-size: 12px; font-weight: 600;
+    -webkit-app-region: no-drag;
+    flex-shrink: 0;
+    align-self: flex-start;
+    transition: all .12s;
+    display: flex; align-items: center; justify-content: center;
+    line-height: 1;
+  }
+  .close-btn:hover {
+    color: rgba(255,255,255,0.95);
+    background: rgba(255,255,255,0.12);
+  }
   .app-label {
     font-size: 10px; font-weight: 700; letter-spacing: 0.8px;
     text-transform: uppercase; color: rgba(255,255,255,0.38);
@@ -133,6 +155,7 @@
         <div class="title" id="title">할 일 제목</div>
         <div class="memo-text" id="memo" style="display:none;"></div>
       </div>
+      <button class="close-btn" id="close-btn" title="3분 뒤 다시 알림">✕</button>
     </div>
 
     <div class="meta-row" id="meta-row"></div>
@@ -211,6 +234,12 @@
       try { window.timeping.ackAlert(task.id, action); } catch(e) {}
     }
   }
+
+  // "그냥 닫기" — close without acknowledging. The pending-alert tracker in
+  // main.js keeps the task in its map so the 3-min re-fire fires again.
+  document.getElementById('close-btn').onclick = () => {
+    window.close();
+  };
 
   document.getElementById('complete-btn').onclick = async () => {
     ack('complete');
