@@ -1,15 +1,22 @@
 /**
  * afterPack.js — electron-builder afterPack hook (macOS only)
  *
- * Problem: electron-builder renames the four Helper bundles by default
- * (Electron Helper.app → "까먹지 말자 Helper.app", etc.). On macOS 26 (Tahoe),
- * the renamed Helpers cause the browser process to crash with SIGTRAP during
- * V8 isolate initialization. Binaries are otherwise byte-identical to the
- * originals — only the bundle directory / CFBundleExecutable differ.
+ * Two passes:
  *
- * Fix: rename each Helper bundle, its executable, and patch its Info.plist
- * back to "Electron Helper*" after packaging. Nested signatures (linker-signed
- * ad-hoc from the Electron release) are preserved.
+ * 1) Restore Helper bundle names. electron-builder renames the four Helpers
+ *    (Electron Helper.app → "까먹지 말자 Helper.app", etc.). On macOS 26
+ *    (Tahoe) the renamed Helpers cause the browser process to crash with
+ *    SIGTRAP during V8 isolate initialization. We rename them back so the
+ *    nested linker-signed ad-hoc signatures stay intact.
+ *
+ * 2) Outer ad-hoc re-sign. With identity:null electron-builder skips signing
+ *    entirely. The result has linker-signed binaries inside but NO outer
+ *    `_CodeSignature/CodeResources`, so Gatekeeper rejects the bundle once
+ *    the user-downloaded zip carries a com.apple.quarantine xattr ("code
+ *    has no resources but signature indicates they must be present").
+ *    A plain `codesign --force --sign -` on the outer .app generates the
+ *    missing CodeResources without touching nested framework signatures
+ *    (no --deep).
  */
 
 const { execSync } = require('child_process');
@@ -32,7 +39,6 @@ module.exports = async function afterPack(context) {
   const helpers = entries.filter(n => n.endsWith('.app') && n.includes('Helper'));
 
   for (const helper of helpers) {
-    // e.g. "까먹지 말자 Helper (GPU).app" → "Electron Helper (GPU).app"
     const restored = helper.replace(appName, 'Electron');
     if (restored === helper) continue;
 
@@ -54,5 +60,18 @@ module.exports = async function afterPack(context) {
     }
 
     console.log(`  ✓ restored Helper name: ${restored}`);
+  }
+
+  // ─── Outer ad-hoc re-sign ──────────────────────────────────────────────
+  // No --deep: nested frameworks keep their original linker-signed signatures.
+  // We just need the outer bundle to have a valid CodeResources / signature
+  // so Gatekeeper accepts it once the .app picks up com.apple.quarantine.
+  try {
+    console.log(`  • codesign --force --sign - (outer-only)`);
+    execSync(`codesign --force --sign - "${appPath}"`, { stdio: 'pipe' });
+    execSync(`codesign --verify "${appPath}"`, { stdio: 'pipe' });
+    console.log(`  ✓ outer bundle ad-hoc signed (CodeResources generated)`);
+  } catch (e) {
+    console.error(`  ⚠ outer codesign failed: ${e.message}`);
   }
 };

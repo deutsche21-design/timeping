@@ -3067,6 +3067,12 @@ function mountV2Overlay() {
       const res = await window.timeping.checkForUpdate();
       if (!res.ok) { showToast('업데이트 확인 실패: ' + (res.error || ''), 'error'); return; }
       if (res.hasUpdate) {
+        // Reverted to manual download (auto-install was rolled back —
+        // Windows Smart App Control blocks the silent NSIS execution and
+        // macOS Gatekeeper rejects unsigned ad-hoc installs once the file
+        // picks up com.apple.quarantine, so the auto path produced more
+        // confusion than convenience). Open the GitHub release page where
+        // the user can pick the right asset and install manually.
         const back = document.createElement('div');
         back.className = 'v2-dlg-backdrop';
         back.id = 'v2-upd-dlg';
@@ -3082,20 +3088,13 @@ function mountV2Overlay() {
               </div>
               ${res.notes ? `<div style="font-size:12px;color:var(--text-muted);background:var(--surface2);padding:8px 10px;border-radius:6px;white-space:pre-wrap;line-height:1.5;">${String(res.notes).replace(/</g,'&lt;')}</div>` : ''}
               <div style="font-size:11px;color:var(--text-light);line-height:1.5;">
-                자동 설치를 누르면 다운로드 후 앱이 종료되고 새 버전으로 자동 재시작됩니다. 할일·설정·알림 모두 그대로 유지됩니다.
-              </div>
-              <div id="v2-upd-progress" style="display:none;">
-                <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;" id="v2-upd-progress-label">다운로드 중...</div>
-                <div style="height:6px;background:var(--surface2);border-radius:3px;overflow:hidden;">
-                  <div id="v2-upd-progress-bar" style="height:100%;background:var(--primary);width:0%;transition:width 0.2s;"></div>
-                </div>
+                다운로드 버튼을 누르면 GitHub 릴리스 페이지가 열립니다. 본인 OS에 맞는 파일을 받아 직접 설치해주세요. 할일·설정은 그대로 유지됩니다.
               </div>
             </div>
-            <div style="padding:12px 16px 14px 16px;border-top:1px solid var(--border);flex-shrink:0;background:var(--surface);" id="v2-upd-actions-wrap">
-              <div style="display:flex;gap:8px;" id="v2-upd-actions">
+            <div style="padding:12px 16px 14px 16px;border-top:1px solid var(--border);flex-shrink:0;background:var(--surface);">
+              <div style="display:flex;gap:8px;">
                 <button class="v2-mini-btn" id="v2-upd-close" style="flex:1;padding:9px;">나중에</button>
-                <button class="v2-mini-btn" id="v2-upd-browser" style="flex:1;padding:9px;font-size:11px;">브라우저</button>
-                <button class="v2-mini-btn primary" id="v2-upd-install" style="flex:2;padding:9px;font-size:13px;">📥 자동 설치</button>
+                <button class="v2-mini-btn primary" id="v2-upd-download" style="flex:2;padding:9px;font-size:13px;">📥 다운로드 페이지 열기</button>
               </div>
             </div>
           </div>`;
@@ -3104,46 +3103,12 @@ function mountV2Overlay() {
         document.body.appendChild(back);
         document.getElementById('v2-upd-close').onclick = closeFn;
         document.getElementById('v2-upd-close-x').onclick = closeFn;
-
-        // Manual fallback (browser)
-        document.getElementById('v2-upd-browser').onclick = () => {
-          if (res.downloadUrl) window.timeping.openExternal(res.downloadUrl);
+        document.getElementById('v2-upd-download').onclick = () => {
+          // Use the release HTML page (not the asset URL) so the user can
+          // pick the right file for their OS and read the release notes.
+          const url = res.releaseUrl || res.downloadUrl;
+          if (url) window.timeping.openExternal(url);
           closeFn();
-        };
-
-        // Auto-install: download + replace + relaunch
-        document.getElementById('v2-upd-install').onclick = async () => {
-          if (!res.downloadUrl) return showToast('다운로드 URL을 찾을 수 없습니다', 'error');
-          // Switch to progress UI
-          document.getElementById('v2-upd-actions').style.display = 'none';
-          document.getElementById('v2-upd-progress').style.display = '';
-          const bar = document.getElementById('v2-upd-progress-bar');
-          const label = document.getElementById('v2-upd-progress-label');
-
-          const offProgress = window.timeping.onUpdateProgress(({ downloaded, total }) => {
-            if (total > 0) {
-              const pct = Math.min(100, Math.round((downloaded / total) * 100));
-              bar.style.width = pct + '%';
-              label.textContent = `다운로드 중... ${pct}% (${(downloaded/1024/1024).toFixed(1)} / ${(total/1024/1024).toFixed(1)} MB)`;
-            } else {
-              label.textContent = `다운로드 중... ${(downloaded/1024/1024).toFixed(1)} MB`;
-            }
-          });
-
-          const r = await window.timeping.installUpdate(res.downloadUrl, res.latest);
-          if (r.ok) {
-            label.textContent = '✓ 설치 준비 완료. 곧 재시작됩니다...';
-            bar.style.width = '100%';
-            // App will quit + relaunch via the helper script
-          } else {
-            label.textContent = '';
-            bar.style.width = '0%';
-            document.getElementById('v2-upd-progress').style.display = 'none';
-            document.getElementById('v2-upd-actions').style.display = '';
-            showToast('자동 설치 실패: ' + (r.error || ''), 'error');
-            // Fallback — open download in browser
-            if (res.downloadUrl) window.timeping.openExternal(res.downloadUrl);
-          }
         };
       } else {
         showToast(`✓ 최신 버전입니다 (${res.current})`, 'success');
