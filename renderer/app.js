@@ -1984,6 +1984,13 @@ function renderSettingsGeneral(s) {
           <span class="toggle-track"></span>
         </label>
       </div>
+      <div class="setting-row" style="flex-direction:column;align-items:stretch">
+        <div>
+          <div class="setting-label">지금 캘린더와 맞추기</div>
+          <div class="setting-sublabel">10분마다 자동 동기화 + 창 포커스 시 자동. 수동으로 즉시 맞추려면 아래 버튼 클릭. 이동·이름변경된 일정은 갱신, 삭제된 일정은 로컬에서도 제거됨.</div>
+        </div>
+        <button class="settings-btn" id="gcal-sync-now" style="margin-top:8px">🔄 지금 동기화</button>
+      </div>
     </div>`;
 }
 
@@ -2116,6 +2123,34 @@ function bindSettingsEvents(container) {
       try {
         await window.timeping.saveSettings(state.settings);
       } catch(e) {}
+    });
+  }
+
+  // Manual GCal sync trigger
+  const syncBtn = container.querySelector('#gcal-sync-now');
+  if (syncBtn) {
+    syncBtn.addEventListener('click', async () => {
+      const orig = syncBtn.textContent;
+      syncBtn.disabled = true;
+      syncBtn.textContent = '⏳ 동기화 중...';
+      try {
+        const r = await window.timeping.gcalSyncAll();
+        if (r.ok) {
+          const parts = [];
+          if (r.imported)  parts.push(`+${r.imported} 추가`);
+          if (r.updated)   parts.push(`✏️ ${r.updated} 갱신`);
+          if (r.removed)   parts.push(`🗑 ${r.removed} 제거`);
+          if (r.exported)  parts.push(`↑ ${r.exported} 내보냄`);
+          showToast(parts.length ? '✓ ' + parts.join(', ') : '✓ 이미 최신', 'success');
+        } else {
+          showToast('동기화 실패: ' + (r.error || ''), 'error');
+        }
+      } catch (e) {
+        showToast('동기화 실패: ' + e.message, 'error');
+      } finally {
+        syncBtn.disabled = false;
+        syncBtn.textContent = orig;
+      }
     });
   }
 

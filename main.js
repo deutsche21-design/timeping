@@ -199,65 +199,126 @@ async function restoreTask(taskId) {
   }
 }
 
-async function importFromGcal() {
+// Convert a GCal event to local-task fields used by sync.
+function eventToTaskFields(event) {
+  const startStr = event.start?.dateTime || event.start?.date;
+  if (!startStr) return null;
+  const startDate = new Date(startStr);
+  const isAllDay = !!event.start?.date && !event.start?.dateTime;
+  const h = isAllDay ? '09' : String(startDate.getHours()).padStart(2, '0');
+  const m = isAllDay ? '00' : String(startDate.getMinutes()).padStart(2, '0');
+
+  // Local-date string (avoid UTC drift for non-UTC timezones)
+  const localY = startDate.getFullYear();
+  const localMo = String(startDate.getMonth() + 1).padStart(2, '0');
+  const localD  = String(startDate.getDate()).padStart(2, '0');
+  const targetDate = `${localY}-${localMo}-${localD}`;
+
+  let repeat = 'ONCE';
+  let repeatDay = null;
+  if (event.recurrence) {
+    const rule = event.recurrence.find(r => r.startsWith('RRULE:')) || '';
+    if (rule.includes('FREQ=DAILY'))        repeat = 'DAILY';
+    else if (rule.includes('FREQ=WEEKLY'))  { repeat = 'WEEKLY';  repeatDay = startDate.getDay(); }
+    else if (rule.includes('FREQ=MONTHLY')) { repeat = 'MONTHLY'; repeatDay = startDate.getDate(); }
+  }
+  return {
+    title: event.summary || '',
+    alertTime: `${h}:${m}`,
+    targetDate,
+    repeat, repeatDay,
+  };
+}
+
+// Two-way sync with Google Calendar.
+//   import: new gcal events → local tasks
+//   update: local tasks whose gcal event moved/renamed → updated locally
+//   orphan: local tasks whose gcal event was deleted within our window → removed
+async function syncWithGcal() {
   const settings = loadSettings();
-  if (!gcal.isAuthenticated()) return { added: 0 };
+  if (!gcal.isAuthenticated()) return { added: 0, updated: 0, removed: 0 };
   const calId = settings.gcalCalendarId || 'primary';
 
-  const events = await gcal.listEvents(calId, { daysAhead: 60 });
-  const tasks = loadTasks();
-  const existingGcalIds = new Set(tasks.map(t => t.gcalEventId).filter(Boolean));
+  // Wide window: -30 days … +60 days. Lets us see events the user moved
+  // recently into the past as well as upcoming ones.
+  const DAYS_PAST = 30, DAYS_AHEAD = 60;
+  const events = await gcal.listEvents(calId, { daysPast: DAYS_PAST, daysAhead: DAYS_AHEAD });
+  const eventById = new Map(events.map(e => [e.id, e]));
 
   const now = new Date();
-  let added = 0;
+  const winStart = new Date(now.getTime() - DAYS_PAST  * 86400000).toISOString().split('T')[0];
+  const winEnd   = new Date(now.getTime() + DAYS_AHEAD * 86400000).toISOString().split('T')[0];
 
+  const tasks = loadTasks();
+  let added = 0, updated = 0, removed = 0;
+
+  // Pass 1: update existing tasks when their gcal event moved/renamed; or
+  //         mark orphan if event missing AND task was scheduled within window.
+  for (let i = tasks.length - 1; i >= 0; i--) {
+    const task = tasks[i];
+    if (!task.gcalEventId) continue;
+    if (task.isCompleted) continue;
+
+    const ev = eventById.get(task.gcalEventId);
+    if (ev) {
+      if (ev.status === 'cancelled') {
+        tasks.splice(i, 1); removed++; continue;
+      }
+      const fields = eventToTaskFields(ev);
+      if (!fields) continue;
+      let dirty = false;
+      if (fields.title && task.title !== fields.title)              { task.title = fields.title; dirty = true; }
+      if (fields.targetDate && task.targetDate !== fields.targetDate){ task.targetDate = fields.targetDate; dirty = true; }
+      if (fields.alertTime && task.alertTime !== fields.alertTime)  { task.alertTime = fields.alertTime; dirty = true; }
+      if (task.repeat !== fields.repeat)                            { task.repeat = fields.repeat; dirty = true; }
+      if ((task.repeatDay ?? null) !== (fields.repeatDay ?? null))  { task.repeatDay = fields.repeatDay; dirty = true; }
+      if (dirty) { task.updatedAt = new Date().toISOString(); updated++; }
+    } else {
+      // No matching event in window. Only treat as orphan if the task's date
+      // is inside our window — otherwise the event might just be too old/future.
+      const td = task.targetDate;
+      if (td && td >= winStart && td <= winEnd && task.repeat === 'ONCE') {
+        tasks.splice(i, 1); removed++;
+      }
+    }
+  }
+
+  // Pass 2: import new events
+  const existingGcalIds = new Set(tasks.filter(t => t.gcalEventId).map(t => t.gcalEventId));
   for (const event of events) {
     if (existingGcalIds.has(event.id)) continue;
     if (!event.summary || event.status === 'cancelled') continue;
-
     const startStr = event.start?.dateTime || event.start?.date;
     if (!startStr) continue;
-
     const startDate = new Date(startStr);
-    if (startDate < new Date(now.getTime() - 3600000)) continue;
+    if (startDate < new Date(now.getTime() - 3600000)) continue;   // skip past
 
     const isOwnEvent = event.description && event.description.includes('우선순위:');
-
-    const isAllDay = !!event.start?.date && !event.start?.dateTime;
-    const h = isAllDay ? '09' : String(startDate.getHours()).padStart(2, '0');
-    const m = isAllDay ? '00' : String(startDate.getMinutes()).padStart(2, '0');
-
-    let repeat = 'ONCE';
-    let repeatDay = null;
-    if (event.recurrence) {
-      const rule = event.recurrence.find(r => r.startsWith('RRULE:')) || '';
-      if (rule.includes('FREQ=DAILY'))        repeat = 'DAILY';
-      else if (rule.includes('FREQ=WEEKLY'))  { repeat = 'WEEKLY';  repeatDay = startDate.getDay(); }
-      else if (rule.includes('FREQ=MONTHLY')) { repeat = 'MONTHLY'; repeatDay = startDate.getDate(); }
-    }
+    const fields = eventToTaskFields(event);
+    if (!fields) continue;
 
     const task = {
       id: uuidv4(),
-      title: event.summary,
+      title: fields.title,
       memo: isOwnEvent ? '' : (event.description || ''),
-      alertTime: `${h}:${m}`,
-      targetDate: startDate.toISOString().split('T')[0],
-      repeat, repeatDay,
+      alertTime: fields.alertTime,
+      targetDate: fields.targetDate,
+      repeat: fields.repeat,
+      repeatDay: fields.repeatDay,
       priority: 'medium',
-      alertChannels: ['system'],
+      alertChannels: ['system', 'popup', 'sound'],
       gcalEventId: event.id,
       gcalImported: true,
       isCompleted: false,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
-
     tasks.push(task);
     existingGcalIds.add(event.id);
     added++;
   }
 
-  if (added > 0) {
+  if (added || updated || removed) {
     saveTasks(tasks);
     refreshScheduler(tasks, handleAlert);
     if (trayRef) trayRef.updateTray();
@@ -266,8 +327,11 @@ async function importFromGcal() {
     }
   }
 
-  return { added };
+  return { added, updated, removed };
 }
+
+// Backwards-compat alias for callers that referred to the old name
+const importFromGcal = syncWithGcal;
 
 function scheduleSnooze(task, minutes) {
   if (isAlarmPaused()) return;
@@ -334,17 +398,27 @@ app.whenReady().then(async () => {
     setImmediate(() => { messaging.init().catch(e => console.error('messaging init:', e.message)); });
   }
 
-  // 30-min bi-directional gcal sync
+  // 10-min bi-directional gcal sync (was 30 min — too long; calendar moves
+  // wouldn't be reflected for half an hour). Plus a sync on window focus
+  // so reopening the app after editing in Calendar pulls changes immediately.
   setInterval(async () => {
     if (!gcal.isAuthenticated()) return;
     try { await gcal.processPendingSync(); } catch (e) {}
-    try { await importFromGcal(); } catch (e) {}
-  }, 30 * 60 * 1000);
+    try { await syncWithGcal(); } catch (e) { console.error('periodic sync:', e.message); }
+  }, 10 * 60 * 1000);
 
   if (gcal.isAuthenticated()) {
     setImmediate(async () => {
       try { await gcal.processPendingSync(); } catch (e) {}
-      try { await importFromGcal(); } catch (e) {}
+      try { await syncWithGcal(); } catch (e) {}
+    });
+  }
+
+  // Sync when user brings the window forward
+  if (mainWindow) {
+    mainWindow.on('focus', () => {
+      if (!gcal.isAuthenticated()) return;
+      syncWithGcal().catch(e => console.error('focus sync:', e.message));
     });
   }
 });
@@ -570,9 +644,11 @@ function setupIPC() {
     }
     saveTasks(tasks);
 
-    let imported = 0;
-    try { const r = await importFromGcal(); imported = r.added; }
-    catch (e) { console.error('Sync import error:', e.message); }
+    let imported = 0, updatedFromGcal = 0, removedFromGcal = 0;
+    try {
+      const r = await syncWithGcal();
+      imported = r.added; updatedFromGcal = r.updated; removedFromGcal = r.removed;
+    } catch (e) { console.error('Sync import error:', e.message); }
 
     try { await gcal.processPendingSync(); } catch (e) {}
 
@@ -580,7 +656,7 @@ function setupIPC() {
       mainWindow.webContents.send('tasks-updated', loadTasks());
     }
 
-    return { ok: true, exported, imported, failed };
+    return { ok: true, exported, imported, updated: updatedFromGcal, removed: removedFromGcal, failed };
   });
 
   ipcMain.handle('gcal-status', () => ({

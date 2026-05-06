@@ -373,10 +373,11 @@ async function listEvents(calendarId, options = {}) {
   const tokens = await getValidTokens();
   const calId = calendarId || 'primary';
   const now = new Date();
+  const past   = new Date(now.getTime() - (options.daysPast  || 0)  * 24 * 60 * 60 * 1000);
   const future = new Date(now.getTime() + (options.daysAhead || 60) * 24 * 60 * 60 * 1000);
 
   const params = new URLSearchParams({
-    timeMin: now.toISOString(),
+    timeMin: past.toISOString(),
     timeMax: future.toISOString(),
     singleEvents: 'true',
     orderBy: 'startTime',
