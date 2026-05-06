@@ -1933,16 +1933,54 @@ function renderSettingsView() {
 }
 
 function renderSettingsGeneral(s) {
+  const realertVal = s.realertIntervalMin ?? 3;   // default 3min
+  const realertOptions = [
+    { v: 0,   label: '재알림 끄기' },
+    { v: 1,   label: '1분마다' },
+    { v: 3,   label: '3분마다 (기본)' },
+    { v: 5,   label: '5분마다' },
+    { v: 10,  label: '10분마다' },
+    { v: 30,  label: '30분마다' },
+    { v: 60,  label: '1시간마다' },
+  ].map(o => `<option value="${o.v}"${o.v === realertVal ? ' selected' : ''}>${o.label}</option>`).join('');
+
   return `
     <div class="settings-section">
       <div class="settings-section-title">앱 설정</div>
       <div class="setting-row">
         <div>
           <div class="setting-label">시작 시 자동 실행</div>
-          <div class="setting-sublabel">로그인 시 TimePing을 자동으로 시작합니다</div>
+          <div class="setting-sublabel">로그인 시 까먹지 말자를 자동으로 시작합니다</div>
         </div>
         <label class="toggle-switch">
           <input type="checkbox" id="launch-at-login" ${s.launchAtLogin?'checked':''}>
+          <span class="toggle-track"></span>
+        </label>
+      </div>
+    </div>
+
+    <div class="settings-section">
+      <div class="settings-section-title">알림 동작</div>
+      <div class="setting-row" style="flex-direction:column;align-items:stretch">
+        <div>
+          <div class="setting-label">미응답 시 재알림 간격</div>
+          <div class="setting-sublabel">알림창을 그냥 닫거나 무시했을 때 다시 알리는 주기</div>
+        </div>
+        <select class="setting-select" id="realert-interval" style="margin-top:6px">
+          ${realertOptions}
+        </select>
+      </div>
+    </div>
+
+    <div class="settings-section">
+      <div class="settings-section-title">구글 캘린더 동기화</div>
+      <div class="setting-row">
+        <div>
+          <div class="setting-label">완료해도 구글 캘린더에서 삭제하지 않기</div>
+          <div class="setting-sublabel">기본은 완료 시 캘린더에서 삭제됨. 켜두면 기록용으로 캘린더에 남아있음</div>
+        </div>
+        <label class="toggle-switch">
+          <input type="checkbox" id="keep-gcal-on-complete" ${s.keepGcalOnComplete?'checked':''}>
           <span class="toggle-track"></span>
         </label>
       </div>
@@ -2053,6 +2091,28 @@ function bindSettingsEvents(container) {
   if (llToggle) {
     llToggle.addEventListener('change', async () => {
       state.settings.launchAtLogin = llToggle.checked;
+      try {
+        await window.timeping.saveSettings(state.settings);
+      } catch(e) {}
+    });
+  }
+
+  // Re-alert interval (0 = off)
+  const realertSel = container.querySelector('#realert-interval');
+  if (realertSel) {
+    realertSel.addEventListener('change', async () => {
+      state.settings.realertIntervalMin = Number(realertSel.value);
+      try {
+        await window.timeping.saveSettings(state.settings);
+      } catch(e) {}
+    });
+  }
+
+  // Keep gcal event on complete
+  const keepGcalToggle = container.querySelector('#keep-gcal-on-complete');
+  if (keepGcalToggle) {
+    keepGcalToggle.addEventListener('change', async () => {
+      state.settings.keepGcalOnComplete = keepGcalToggle.checked;
       try {
         await window.timeping.saveSettings(state.settings);
       } catch(e) {}

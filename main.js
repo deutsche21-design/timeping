@@ -76,10 +76,19 @@ function createWindow() {
 }
 
 // ── Pending-alert tracking (Feature 1+2: persistent until acknowledged) ───
-// Map<taskId, { task, lastFiredAt }>. Re-fires every 3 min until user clicks
-// 완료/스누즈 (which call ackAlert).
+// Map<taskId, { task, lastFiredAt }>. Re-fires at the user-configured
+// interval (default 3 min) until 완료/스누즈 is pressed. 0 disables re-fire.
 const pendingAlerts = new Map();
-const RE_FIRE_INTERVAL_MS = 3 * 60 * 1000;
+const DEFAULT_RE_FIRE_INTERVAL_MIN = 3;
+
+function reFireIntervalMs() {
+  const s = loadSettings();
+  const m = s.realertIntervalMin;
+  // undefined → default; 0 → disabled (return Infinity so check never triggers)
+  if (m === 0) return Infinity;
+  if (typeof m === 'number' && m > 0) return m * 60 * 1000;
+  return DEFAULT_RE_FIRE_INTERVAL_MIN * 60 * 1000;
+}
 
 function ackPendingAlert(taskId) {
   pendingAlerts.delete(taskId);
@@ -113,13 +122,14 @@ function handleAlert(task) {
   pendingAlerts.set(task.id, { task, lastFiredAt: Date.now() });
 }
 
-// Periodic re-fire scan (every 30 sec; re-fires if last fire > 3 min)
+// Periodic re-fire scan (every 30 sec; re-fires if last fire > configured interval)
 setInterval(() => {
   if (isAlarmPaused()) return;
+  const interval = reFireIntervalMs();
+  if (!isFinite(interval)) return;   // user turned re-fire off
   const now = Date.now();
   for (const [taskId, entry] of pendingAlerts.entries()) {
-    if (now - entry.lastFiredAt >= RE_FIRE_INTERVAL_MS) {
-      // Re-fire the alert (use latest task data in case it was edited)
+    if (now - entry.lastFiredAt >= interval) {
       const tasks = loadTasks();
       const fresh = tasks.find(t => t.id === taskId);
       if (!fresh || fresh.isCompleted) {
@@ -147,10 +157,10 @@ async function completeTask(taskId) {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('tasks-updated', tasks);
   }
-  // Feature 10: also delete imported events so completing a task always
-  // removes it from Google Calendar (was previously skipped for imported).
-  if (task.gcalEventId && gcal.isAuthenticated()) {
-    const settings = loadSettings();
+  // Optionally delete the gcal event on complete. The setting
+  // `keepGcalOnComplete` (default false) preserves the event for record-keeping.
+  const settings = loadSettings();
+  if (task.gcalEventId && gcal.isAuthenticated() && !settings.keepGcalOnComplete) {
     try {
       await gcal.deleteEvent(task.gcalEventId, settings.gcalCalendarId || 'primary');
       sendToast('🗑 구글 캘린더에서 삭제됐어요');
